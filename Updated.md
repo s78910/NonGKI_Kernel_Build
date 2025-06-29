@@ -1,4 +1,29 @@
 ## 项目更新日志
+- **Ver.1.5 Fixed 35**
+    - 移植 红米 K20 Pro SuSFS更新步骤
+    - 移植 小米11 Ultra HyperOS A14 SuSFS更新步骤
+    - 增加 Patch/susfs_upgrade_to_158_X_X.patch 系列补丁
+    - 增加 说明文件 对应词条
+    - 增加 示例YAML文件 SuSFS 更新至 1.5.8 补丁步骤
+    - 增加 小米Mix2s SuSFS 更新至 1.5.8 补丁步骤
+    - 增加 小米平板4(Plus) 更新至 1.5.8 补丁步骤
+    - 增加 小米11 Ultra HyperOS A14 SuSFS修补补丁
+    - 修正 说明文件 susfs_upgrade_to_157.patch 参考链接指向
+    - 修正 支持列表 SUSFS v1.5.7 参考链接指向
+
+- **Ver.1.5 Fixed 34**
+    - 移植 小米 10S 完整编译流程
+    - 修正 小米 10S 编译错误
+
+- **Ver.1.5 Fixed 33**
+    - 增加 示例YAML文件 引入 curlx
+    - 增加 说明文件 curlx.sh脚本说明
+    - 增加 红米8 4.19 A15 Older YAML编译方式
+    - 增加 说明文件 curlx.sh脚本说明词条
+    - 修正 示例YAML文件 wget 更改为 curlx
+    - 修正 发布列表 红米8 4.19 A15 Re:Kernel支持
+    - 切换 发布列表 红米8 4.19 A15 为 Older YAML编译方式
+
 - **Ver.1.5 Fixed 32**
     - 修正 说明文件 susfs_upgrade_to_157.sh 参考链接
 
