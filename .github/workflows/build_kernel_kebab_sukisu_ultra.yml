@@ -12,34 +12,69 @@ on:
           - 'Release'
 
 env:
-  PYTHON_VERSION: "3"
-  PACK_METHOD: "Anykernel3"
-  KERNELSU_METHOD: "shell"
-  PATCHES_SOURCE: "gooder123/NonGKI_Patcher"
-  PATCHES_BRANCH: "main"
-  HOOK_METHOD: "syscall"
-  HOOK_OLDER: "false"
-  PROFILE_NAME: "kebab_official.env"
-  KERNELSU_SUS_PATCH: "false"
-  KPM_ENABLE: "false"
-  KPM_FIX: "false"
-  KPM_PATCH_SOURCE: "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU_patch/refs/heads/main/kpm/patch_linux"
-  GENERATE_DTB: "false"
-  GENERATE_CHIP: "qcom"
-  BUILD_DEBUGGER: "false"
-  SKIP_PATCH: "false"
-  BUILD_OTHER_CONFIG: "false"
-  FREE_MORE_SPACE: "false"
-  REKERNEL_ENABLE: "false"
+  PYTHON_VERSION: 3
+  PACK_METHOD: Anykernel3
+  KERNELSU_METHOD: shell
+  PATCHES_SOURCE: gooder123/NonGKI_Patcher
+  PATCHES_BRANCH: main
+  HOOK_METHOD: syscall
+  HOOK_OLDER: false
+  PROFILE_NAME: kebab_official.env
+  KERNELSU_SUS_PATCH: false
+  KPM_ENABLE: false
+  KPM_FIX: false
+  KPM_PATCH_SOURCE: https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU_patch/refs/heads/main/kpm/patch_linux
+  GENERATE_DTB: false
+  GENERATE_CHIP: qcom
+  BUILD_DEBUGGER: false
+  SKIP_PATCH: false
+  BUILD_OTHER_CONFIG: false
+  FREE_MORE_SPACE: false
+  REKERNEL_ENABLE: false
+  CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
+  CCACHE_NOHASHDIR: true
+  CCACHE_HARDLINK: true
+  DEVICE_NAME: oneplus_8t_cn
+  DEVICE_CODENAME: kebab
+  CUSTOM_CMDS: CLANG_TRIPLE=aarch64-linux-gnu-
+  EXTRA_CMDS: LD=ld.lld LLVM=1
+  KERNEL_SOURCE: https://github.com/OnePlusOSS/android_kernel_oneplus_sm8250.git
+  KERNEL_BRANCH: oneplus/sm8250_s_13.1
+  CLANG_SOURCE: https://gitlab.com/Panchajanya1999/azure-clang.git
+  CLANG_BRANCH: main
+  GCC_GNU: 
+  GCC_64_SOURCE: 
+  GCC_64_BRANCH: 
+  GCC_32_SOURCE: 
+  GCC_32_BRANCH: 
+  TOOLCHAIN_SOURCE: 
+  TOOLCHAIN_BRANCH: 
+  DEFCONFIG_SOURCE: 
+  DEFCONFIG_NAME: vendor/kona-perf_defconfig
+  DEFCONFIG_ORIGIN_IMAGE: 
+  KERNELSU_SOURCE: https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh
+  KERNELSU_BRANCH: susfs-main
+  KERNELSU_NAME: SukiSU-Ultra
+  SUSFS_ENABLE: true
+  SUSFS_FIXED: true
+  SUSFS_UPDATE: true
+  AK3_SOURCE: https://github.com/lateautumn233/AnyKernel3.git
+  AK3_BRANCH: master
+  BOOT_SOURCE: 
+  LXC_ENABLE: 
+  HAVE_NO_DTBO: 
+  HAVE_NO_DTBO_TOOL: 
+  ROM_TEXT: official_ROM_a13 
+  CC: clang
+  PATH: /home/runner/work/NonGKI_Kernel_Build/NonGKI_Kernel_Build/clang/bin:/snap/bin:/home/runner/.local/bin:/opt/pipx_bin:/home/runner/.cargo/bin:/home/runner/.config/composer/vendor/bin:/usr/local/.ghcup/bin:/home/runner/.dotnet/tools:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin
 
 jobs:
   build:
     name: Build Kernel by ${{ github.actor }}
     runs-on: ubuntu-22.04
-    env:
-      CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
-      CCACHE_NOHASHDIR: "true"
-      CCACHE_HARDLINK: "true"
+    defaults:
+      run:
+        shell: /usr/bin/bash -e {0}
     steps:
       - name: Free Disk Space (Ubuntu)
         if: env.FREE_MORE_SPACE == 'true'
@@ -282,13 +317,32 @@ jobs:
 
       - name: Get Kernel Source
         run: |
+          echo "Starting to clone kernel source from ${{ env.KERNEL_SOURCE }}"
           git clone ${{ env.KERNEL_SOURCE }} -b ${{ env.KERNEL_BRANCH }} android-kernel --depth=1
+          ls -la
+          if [ -d "android-kernel" ]; then
+            echo "Kernel source cloned successfully"
+          else
+            echo "Failed to clone kernel source"
+            exit 1
+          fi
 
       - name: Apply syscall hooks patch
         run: |
+          echo "Checking for android-kernel directory"
+          if [ ! -d "$GITHUB_WORKSPACE/android-kernel" ]; then
+            echo "Error: android-kernel directory does not exist"
+            exit 1
+          fi
           cd $GITHUB_WORKSPACE/android-kernel
-          cp $GITHUB_WORKSPACE/syscall_hooks_4.19.patch .
-          git apply syscall_hooks_4.19.patch || echo "Failed to apply patch directly, will continue with regular hooks"
+          echo "Checking for syscall_hooks_4.19.patch file"
+          if [ -f "$GITHUB_WORKSPACE/syscall_hooks_4.19.patch" ]; then
+            echo "Found syscall_hooks_4.19.patch, copying and applying"
+            cp $GITHUB_WORKSPACE/syscall_hooks_4.19.patch .
+            git apply syscall_hooks_4.19.patch || echo "Failed to apply patch directly, will continue with regular hooks"
+          else
+            echo "syscall_hooks_4.19.patch file not found, skipping patch application"
+          fi
 
       - name: Set Pack Method and KernelSU and SUSFS
         run: |
