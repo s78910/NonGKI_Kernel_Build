@@ -432,7 +432,7 @@ jobs:
 
       - name: Start Build Kernel
         id: build_kernel
-        if: "!cancelled()"
+        if: ${{ !cancelled() }}
         run: |
           cd $GITHUB_WORKSPACE
           cd android-kernel
@@ -522,7 +522,7 @@ jobs:
 
       - name: Build Anykernel3 Package
         id: build_anykernel
-        if: env.BUILD_SUCCESS == 'true' && env.PACK_METHOD == 'Anykernel3' && !cancelled()
+        if: ${{ env.BUILD_SUCCESS == 'true' && env.PACK_METHOD == 'Anykernel3' && !cancelled() }}
         run: |
           cd $GITHUB_WORKSPACE
           
@@ -561,8 +561,8 @@ jobs:
           fi
 
       - name: Upload Kernel Package
-        if: env.BUILD_SUCCESS == 'true' && !cancelled()
-        uses: actions/upload-artifact@v3
+        if: ${{ env.BUILD_SUCCESS == 'true' && !cancelled() }}
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ env.DEVICE_CODENAME }}_${{ env.ROM_TEXT }}_SukiSU-SUSFS-${{ github.event.inputs.SUSFS_VERSION }}
           path: |
