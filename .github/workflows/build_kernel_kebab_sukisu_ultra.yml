@@ -1,0 +1,572 @@
+name: Build OnePlus 8T Kernel - SukiSU Ultra with SUSFS
+on:
+  workflow_dispatch:
+    inputs:
+      SUSFS_VERSION:
+        description: 'SUSFS版本选择'
+        required: true
+        default: 'CI'
+        type: 'choice'
+        options:
+          - 'CI'
+          - 'Release'
+
+env:
+  PYTHON_VERSION: "3"
+  PACK_METHOD: "Anykernel3"
+  KERNELSU_METHOD: "shell"
+  PATCHES_SOURCE: "gooder123/NonGKI_Patcher"
+  PATCHES_BRANCH: "main"
+  HOOK_METHOD: "syscall"
+  HOOK_OLDER: "false"
+  PROFILE_NAME: "kebab_official.env"
+  KERNELSU_SUS_PATCH: "false"
+  KPM_ENABLE: "false"
+  KPM_FIX: "false"
+  KPM_PATCH_SOURCE: "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU_patch/refs/heads/main/kpm/patch_linux"
+  GENERATE_DTB: "false"
+  GENERATE_CHIP: "qcom"
+  BUILD_DEBUGGER: "false"
+  SKIP_PATCH: "false"
+  BUILD_OTHER_CONFIG: "false"
+  FREE_MORE_SPACE: "false"
+  REKERNEL_ENABLE: "false"
+
+jobs:
+  build:
+    name: Build Kernel by ${{ github.actor }}
+    runs-on: ubuntu-22.04
+    env:
+      CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
+      CCACHE_NOHASHDIR: "true"
+      CCACHE_HARDLINK: "true"
+    steps:
+      - name: Free Disk Space (Ubuntu)
+        if: env.FREE_MORE_SPACE == 'true'
+        uses: jlumbroso/free-disk-space@main
+        with:
+          # this might remove tools that are actually needed,
+          # if set to "true" but frees about 6 GB
+          tool-cache: true
+
+          # all of these default to true, but feel free to set to
+          # "false" if necessary for your workflow
+          android: false
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Remove useless tools
+        run: |
+          sudo rm -rf /opt/hostedtoolcache
+          df -h
+
+      - uses: actions/checkout@v4
+      - name: Prepare Configuration
+        run: |
+          CONFIG_ENV=$(grep -w "CONFIG_ENV" Profiles/${{ env.PROFILE_NAME }} | head -n 1 | cut -d "=" -f 2)
+          CONFIG_LIST=(
+              DEVICE_NAME
+              DEVICE_CODENAME
+              CUSTOM_CMDS
+              EXTRA_CMDS
+              KERNEL_SOURCE
+              KERNEL_BRANCH
+              CLANG_SOURCE
+              CLANG_BRANCH
+              GCC_GNU
+              GCC_64_SOURCE
+              GCC_64_BRANCH
+              GCC_32_SOURCE
+              GCC_32_BRANCH
+              TOOLCHAIN_SOURCE
+              TOOLCHAIN_BRANCH
+              DEFCONFIG_SOURCE
+              DEFCONFIG_NAME
+              DEFCONFIG_ORIGIN_IMAGE
+              KERNELSU_SOURCE
+              KERNELSU_BRANCH
+              KERNELSU_NAME
+              SUSFS_ENABLE
+              SUSFS_FIXED
+              SUSFS_UPDATE
+              AK3_SOURCE
+              AK3_BRANCH
+              BOOT_SOURCE
+              LXC_ENABLE
+              HAVE_NO_DTBO
+              HAVE_NO_DTBO_TOOL
+              ROM_TEXT
+
+          )
+
+          for CONFIG in "${CONFIG_LIST[@]}"; do
+              if [[ "$CONFIG" == "EXTRA_CMDS" || "$CONFIG" == "CUSTOM_CMDS" ]]; then
+                  echo "$CONFIG=$(grep -w "$CONFIG" "$CONFIG_ENV" | head -n 1 | cut -d ":" -f 2)" >> $GITHUB_ENV
+              else
+                  echo "$CONFIG=$(grep -w "$CONFIG" "$CONFIG_ENV" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
+              fi
+          done
+
+          # Move patch folder to tmp
+          mv $GITHUB_WORKSPACE/Patches /tmp/
+
+      - name: Maximize build space
+        uses: easimon/maximize-build-space@master
+        with:
+          root-reserve-mb: 2048
+          temp-reserve-mb: 64
+          swap-size-mb: 8192
+          remove-dotnet: "true"
+          remove-android: "true"
+          remove-haskell: "true"
+          remove-codeql: "true"
+
+      - name: Install necessary packages
+        run: |
+          lsb_release -a
+          UBUNTU_VERSION=$(lsb_release -sr)
+          sudo apt-get update
+
+          if [ $UBUNTU_VERSION == "22.04" ] || [ $UBUNTU_VERSION == "20.04" ]; then
+            sudo apt-get install git ccache automake flex lzop bison gperf build-essential zip curl zlib1g-dev g++-multilib libxml2-utils bzip2 libbz2-dev libbz2-1.0 libghc-bzlib-dev squashfs-tools pngcrush schedtool dpkg-dev liblz4-tool make optipng maven libssl-dev pwgen libswitch-perl policycoreutils minicom libxml-sax-base-perl libxml-simple-perl bc libc6-dev-i386 lib32ncurses5-dev libx11-dev lib32z-dev libgl1-mesa-dev xsltproc unzip device-tree-compiler
+            sudo apt-get install p7zip p7zip-full -y
+            if [ "${{ env.PYTHON_VERSION }}" == "3" ]; then
+                sudo apt install python2 python3 -y
+            elif [ "${{ env.PYTHON_VERSION }}" == "2" ]; then
+                sudo apt install python2 -y
+                sudo rm /usr/bin/python
+                sudo ln -s /usr/bin/python2.7 /usr/bin/python
+            else
+                echo "You need choose a python version."
+                false
+            fi
+          else
+            sudo apt-get install git ccache automake flex lzop bison gperf build-essential zip curl zlib1g-dev g++-multilib libxml2-utils bzip2 libbz2-dev libbz2-1.0 libghc-bzlib-dev squashfs-tools pngcrush schedtool dpkg-dev make optipng maven libssl-dev pwgen libswitch-perl policycoreutils minicom libxml-sax-base-perl libxml-simple-perl bc libc6-dev-i386 libx11-dev lib32z-dev libgl1-mesa-dev xsltproc unzip device-tree-compiler python3
+            sudo apt-get install zstd libc6 binutils libc6-dev-i386 gcc g++ p7zip p7zip-full -y
+          fi
+
+      - name: Install GNU GCC
+        if: env.GCC_GNU == 'true'
+        run: |
+          if [ -z ${{ env.GCC_64_SOURCE }} ] && [ -z ${{ env.GCC_32_SOURCE }} ]; then
+            sudo apt-get install binutils-aarch64-linux-gnu gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi -y
+            echo "GCC_64=CROSS_COMPILE=aarch64-linux-gnu-" >> $GITHUB_ENV
+            echo "GCC_32=CROSS_COMPILE_ARM32=arm-linux-gnueabi-" >> $GITHUB_ENV
+          else
+            echo "You needn't gcc powered by system."
+          fi
+
+      - name: Set Compile Environment
+        run: |
+          cd $GITHUB_WORKSPACE
+
+          # Set GCC Aarch64
+          if [[ "${{ env.CLANG_SOURCE }}" == *proton* ]]; then
+            echo "Detected Proton Clang. Not use GCC Source."
+            GCC_64_BIN=aarch64-linux-gnu-
+            echo "GCC_64=CROSS_COMPILE=$GCC_64_BIN" >> $GITHUB_ENV
+          elif [ -z "${{ env.GCC_64_SOURCE }}" ]; then
+            echo "Not set GCC 64!"
+          else
+            if [[ "${{ env.GCC_64_SOURCE }}" == *".git" ]]; then
+              git clone ${{ env.GCC_64_SOURCE }} -b ${{ env.GCC_64_BRANCH }} gcc-64 --depth=1
+            fi
+            if [[ "${{ env.GCC_64_SOURCE }}" == *'.tar.gz' ]]; then
+              wget -O gcc-64.tar.gz ${{ env.GCC_64_SOURCE }}
+              mkdir gcc-64
+              tar -C gcc-64/ -zxvf gcc-64.tar.gz
+            fi
+            if [[ "${{ env.GCC_64_SOURCE }}" == *'.zip' ]]; then
+              wget -O gcc-64.zip ${{ env.GCC_64_SOURCE }}
+              mkdir gcc-64
+              unzip gcc-64.zip -d gcc-64/
+            fi
+            GCC_64_BIN=aarch64-linux-android-
+            echo "GCC_64=CROSS_COMPILE=$GITHUB_WORKSPACE/gcc-64/bin/$GCC_64_BIN" >> $GITHUB_ENV
+          fi
+
+
+          # Set GCC ARM32
+          if [[ "${{ env.CLANG_SOURCE }}" == *proton* ]]; then
+            echo "Detected Proton Clang. Not use GCC Source."
+            GCC_32_BIN=arm-linux-gnueabi-
+            echo "GCC_32=CROSS_COMPILE=$GCC_32_BIN" >> $GITHUB_ENV
+          elif [ -z "${{ env.GCC_32_SOURCE }}" ]; then
+            echo "Not set GCC 32!"
+          else
+            if [[ "${{ env.GCC_32_SOURCE }}" == *".git" ]]; then
+              git clone ${{ env.GCC_32_SOURCE }} -b ${{ env.GCC_32_BRANCH }} gcc-32 --depth=1
+            fi
+            if [[ "${{ env.GCC_32_SOURCE }}" == *'.tar.gz' ]]; then
+              wget -O gcc-32.tar.gz ${{ env.GCC_32_SOURCE }}
+              mkdir gcc-32
+              tar -C gcc-32/ -zxvf gcc-32.tar.gz
+            fi
+            if [[ "${{ env.GCC_32_SOURCE }}" == *'.zip' ]]; then
+              wget -O gcc-32.zip ${{ env.GCC_32_SOURCE }}
+              mkdir gcc-32
+              unzip gcc-32.zip -d gcc-32/
+            fi
+            GCC_32_BIN=arm-linux-androideabi-
+            echo "GCC_32=CROSS_COMPILE_ARM32=$GITHUB_WORKSPACE/gcc-32/bin/$GCC_32_BIN" >> $GITHUB_ENV
+          fi
+
+          # Set clang bin
+          if [ -z "${{ env.CLANG_SOURCE }}" ]; then
+            if [ -z "${{ env.TOOLCHAIN_SOURCE }}" ]; then
+              echo "Not set clang!"
+            else
+              echo "You are using antman manager!"
+              echo "Toolchain will use the antman manager to provide it"
+              ANTMAN_DIR="$GITHUB_WORKSPACE/antman"
+              mkdir -p $ANTMAN_DIR
+              cd $ANTMAN_DIR
+              git clone ${{ env.TOOLCHAIN_SOURCE }} -b ${{ env.TOOLCHAIN_BRANCH }} . --depth=1
+              chmod +x antman
+              ./antman -i
+              ./antman -s $GITHUB_WORKSPACE
+              cd $GITHUB_WORKSPACE
+              source env.sh
+              echo "CC=clang" >> $GITHUB_ENV
+              echo "CLANG_TRIPLE=aarch64-linux-gnu-" >> $GITHUB_ENV
+            fi
+          else
+            if [[ "${{ env.CLANG_SOURCE }}" == *".git" ]]; then
+              if [[ "${{ env.CLANG_SOURCE }}" == *proton* ]]; then
+                echo "Detected Proton Clang. Installing to clang-proton/"
+                mkdir -p clang-proton
+                git clone --recursive ${{ env.CLANG_SOURCE }} -b ${{ env.CLANG_BRANCH }} clang-proton --depth=1
+                echo "CC=clang" >> $GITHUB_ENV
+                echo "PATH=$GITHUB_WORKSPACE/clang-proton/bin:$PATH" >> $GITHUB_ENV
+              else
+                echo "Installing Clang to clang/"
+                git clone --recursive ${{ env.CLANG_SOURCE }} -b ${{ env.CLANG_BRANCH }} clang --depth=1
+                echo "CC=clang" >> $GITHUB_ENV
+                echo "PATH=$GITHUB_WORKSPACE/clang/bin:$PATH" >> $GITHUB_ENV
+              fi
+            elif [[ "${{ env.CLANG_SOURCE }}" == *"antman"* ]]; then
+              echo "You are using antman manager!"
+              echo "Toolchain will use the antman manager to provide it"
+              ANTMAN_DIR="$GITHUB_WORKSPACE/antman"
+              mkdir -p $ANTMAN_DIR
+              cd $ANTMAN_DIR
+              git clone ${{ env.CLANG_SOURCE }} -b ${{ env.CLANG_BRANCH }} . --depth=1
+              chmod +x antman
+              ./antman -i
+              ./antman -s $GITHUB_WORKSPACE
+              cd $GITHUB_WORKSPACE
+              source env.sh
+            elif [[ "${{ env.CLANG_SOURCE }}" == *'.tar.gz' ]]; then
+              wget -O clang.tar.gz ${{ env.CLANG_SOURCE }}
+              mkdir -p clang
+              tar -C clang/ -zxvf clang.tar.gz
+              echo "CC=clang" >> $GITHUB_ENV
+              echo "PATH=$GITHUB_WORKSPACE/clang/bin:$PATH" >> $GITHUB_ENV
+            elif [[ "${{ env.CLANG_SOURCE }}" == *'.tar.xz' ]]; then
+              wget -O clang.tar.xz ${{ env.CLANG_SOURCE }}
+              mkdir -p clang
+              tar -C clang/ -xf clang.tar.xz
+              echo "CC=clang" >> $GITHUB_ENV
+              echo "PATH=$GITHUB_WORKSPACE/clang/bin:$PATH" >> $GITHUB_ENV
+            elif [[ "${{ env.CLANG_SOURCE }}" == *'.zip' ]]; then
+              wget -O clang.zip ${{ env.CLANG_SOURCE }}
+              mkdir -p clang
+              unzip -d clang/ clang.zip
+              echo "CC=clang" >> $GITHUB_ENV
+              echo "PATH=$GITHUB_WORKSPACE/clang/bin:$PATH" >> $GITHUB_ENV
+            fi
+          fi
+
+      - name: Get Kernel Source
+        run: |
+          git clone ${{ env.KERNEL_SOURCE }} -b ${{ env.KERNEL_BRANCH }} android-kernel --depth=1
+
+      - name: Apply syscall hooks patch
+        run: |
+          cd $GITHUB_WORKSPACE/android-kernel
+          cp $GITHUB_WORKSPACE/syscall_hooks_4.19.patch .
+          git apply syscall_hooks_4.19.patch || echo "Failed to apply patch directly, will continue with regular hooks"
+
+      - name: Set Pack Method and KernelSU and SUSFS
+        run: |
+          cd $GITHUB_WORKSPACE
+          
+          # SUSFS Version
+          if [ "${{ github.event.inputs.SUSFS_VERSION }}" == "CI" ]; then
+            echo "使用CI版本的SUSFS"
+            echo "SUSFS_BRANCH=susfs-main" >> $GITHUB_ENV
+          else
+            echo "使用Release版本的SUSFS"
+            echo "SUSFS_BRANCH=susfs-v1.5.8" >> $GITHUB_ENV
+          fi
+
+          # Check SUSFS and KERNELSU Method
+          if [ "${{ env.KERNELSU_METHOD }}" == "shell" ]; then
+            cd android-kernel
+            curl -LSs "${{ env.KERNELSU_SOURCE }}" | bash -s ${{ env.SUSFS_BRANCH }}
+            cd $GITHUB_WORKSPACE
+          elif [ "${{ env.KERNELSU_METHOD }}" == "manual" ]; then
+            git clone https://github.com/${{ env.KERNELSU_NAME }}/KernelSU ksu -b ${{ env.KERNELSU_BRANCH }}
+          elif [ "${{ env.KERNELSU_METHOD }}" == "only" ]; then
+            cd android-kernel
+            git clone https://github.com/${{ env.KERNELSU_NAME }}/KernelSU -b ${{ env.KERNELSU_BRANCH }}
+            cd $GITHUB_WORKSPACE
+          fi
+
+          # Check AK3
+          if [ "${{ env.PACK_METHOD }}" == "Anykernel3" ]; then
+            if [ -d "${{ github.workspace }}/android-kernel/anykernel3" ]; then
+              echo "Will use android-kernel/anykernel3 directory"
+              echo "Using provided AnyKernel3 source"
+            elif [ -d "${{ github.workspace }}/android-kernel/AnyKernel3" ]; then
+              echo "Will use android-kernel/AnyKernel3 directory"
+              echo "Using provided AnyKernel3 source"
+            else
+              if [ -z "${{ env.AK3_SOURCE }}" ]; then
+                echo "Will use default AnyKernel3 source"
+                git clone https://github.com/osm0sis/AnyKernel3 -b master AnyKernel3 --depth=1
+              else
+                echo "Will use AK3_SOURCE AnyKernel3 source"
+                git clone ${{ env.AK3_SOURCE }} -b ${{ env.AK3_BRANCH }} AnyKernel3 --depth=1
+                rm -rf AnyKernel3/.git
+              fi
+            fi
+          elif [ "${{ env.PACK_METHOD }}" == "MKBOOTIMG" ]; then
+            if [ -z "${{ env.BOOT_SOURCE }}" ]; then
+              echo "No set boot source!"
+            else
+              wget ${{ env.BOOT_SOURCE }} -O boot.img
+            fi
+          fi
+
+      - name: Extra Kernel Options
+        run: |
+          cd $GITHUB_WORKSPACE/android-kernel
+
+          # Set DEFCONFIG
+          if [ -n "${{ env.DEFCONFIG_SOURCE }}" ]; then
+            KERNEL_CONFIG_SOURCE=${{ env.DEFCONFIG_SOURCE }}
+            wget $KERNEL_CONFIG_SOURCE -O arch/arm64/configs/${{ env.DEFCONFIG_NAME }}
+          fi
+
+      - name: Fixed Patches
+        run: |
+          cd $GITHUB_WORKSPACE
+          
+          # Check Patches
+          if [ ! -d "/tmp/Patches" ]; then
+            echo "You have remove patch folder!"
+            mkdir -p /tmp/Patches
+          fi
+
+          # Check Patch Source
+          if [ "${{ env.KERNELSU_METHOD }}" != "shell" ]; then
+            # Restore hook
+            cp -rf /tmp/Patches/*.sh $GITHUB_WORKSPACE
+          fi
+          
+          if [ "${{ env.SUSFS_ENABLE }}" == "true" ]; then
+            git clone https://github.com/${{ env.PATCHES_SOURCE }} -b ${{ env.PATCHES_BRANCH }} NonGKI_Kernel_Patches
+            cp -rf NonGKI_Kernel_Patches/Patches/. /tmp/Patches/
+          fi
+
+      - name: Patch Kernel of SUSFS
+        if: env.SUSFS_ENABLE == 'true'
+        run: |
+          cd $GITHUB_WORKSPACE
+          if [ -d "NonGKI_Kernel_Patches" ]; then
+            cd android-kernel
+            if [ "${{ env.KERNELSU_METHOD }}" != "shell" ]; then
+              git am $GITHUB_WORKSPACE/NonGKI_Kernel_Patches/Patch/kernel-arm64-add-susfs-sysfs.patch || git apply $GITHUB_WORKSPACE/NonGKI_Kernel_Patches/Patch/kernel-arm64-add-susfs-sysfs.patch
+              git am $GITHUB_WORKSPACE/NonGKI_Kernel_Patches/Patch/kernel-arm64-add-susfs-relay.patch || git apply $GITHUB_WORKSPACE/NonGKI_Kernel_Patches/Patch/kernel-arm64-add-susfs-relay.patch
+              git am $GITHUB_WORKSPACE/NonGKI_Kernel_Patches/Patch/kernel-arm64-add-susfs-kmod.patch || git apply $GITHUB_WORKSPACE/NonGKI_Kernel_Patches/Patch/kernel-arm64-add-susfs-kmod.patch
+              cd $GITHUB_WORKSPACE
+            else
+              echo "You have used shell method for SUSFS!"
+            fi
+          else
+            echo "You need set PATCHES_SOURCE"
+          fi
+
+      - name: Update SUSFS Version
+        if: env.SUSFS_UPDATE == 'true'
+        run: |
+          cd $GITHUB_WORKSPACE
+          if [ -d "NonGKI_Kernel_Patches" ]; then
+            cd android-kernel
+            git am $GITHUB_WORKSPACE/NonGKI_Kernel_Patches/Patch/susfs_upgrade_to_157.patch || git apply $GITHUB_WORKSPACE/NonGKI_Kernel_Patches/Patch/susfs_upgrade_to_157.patch
+            cd $GITHUB_WORKSPACE
+          else
+            echo "You need set PATCHES_SOURCE"
+          fi
+
+      - name: Fixed Kernel Patch
+        if: env.SUSFS_FIXED == 'true'
+        run: |
+          cd $GITHUB_WORKSPACE
+          if [ -d "NonGKI_Kernel_Patches" ]; then
+            cd android-kernel
+            if [ -d "$GITHUB_WORKSPACE/NonGKI_Kernel_Patches/${{ env.DEVICE_CODENAME }}" ]; then
+              for PATCH in "$GITHUB_WORKSPACE/NonGKI_Kernel_Patches/${{ env.DEVICE_CODENAME }}"/*.patch; do
+                if [ -f "$PATCH" ]; then
+                  echo "DEVICE PATCH -> Patching $PATCH"
+                  git am $PATCH || git apply $PATCH
+                fi
+              done
+            fi
+            if [ -d "$GITHUB_WORKSPACE/NonGKI_Kernel_Patches/patches" ]; then
+              for PATCH in "$GITHUB_WORKSPACE/NonGKI_Kernel_Patches/patches"/*.patch; do
+                if [ -f "$PATCH" ]; then
+                  echo "DEVICE PATCH -> Patching $PATCH"
+                  git am $PATCH || git apply $PATCH
+                fi
+              done
+            fi
+            cd $GITHUB_WORKSPACE
+          else
+            echo "You need set PATCHES_SOURCE"
+          fi
+
+      - name: Start Build Kernel
+        id: build_kernel
+        if: "!cancelled()"
+        run: |
+          cd $GITHUB_WORKSPACE
+          cd android-kernel
+          mkdir -p out
+          echo "[INFO] Build Kernel Start With Arch arm64"
+          echo "[INFO] Using CC=${{ env.CC }}"
+          echo "CC -> ${{ env.CC }}"
+
+          # Build kernel
+          USE_GCC=""
+          if [ -n "${{ env.GCC_64 }}" ]; then
+            USE_GCC="${{ env.GCC_64 }} "
+            if [ -n "${{ env.GCC_32 }}" ]; then
+              USE_GCC+="${{ env.GCC_32 }} "
+            fi
+          fi
+
+          # Add Custom CMDS
+          CMDS_EXTRA=""
+          if [ -n "${{ env.CUSTOM_CMDS }}" ]; then
+            CMDS_EXTRA="${{ env.CUSTOM_CMDS }} "
+          fi
+          # Add Extra CMDS
+          if [ -n "${{ env.EXTRA_CMDS }}" ]; then
+            CMDS_EXTRA+="${{ env.EXTRA_CMDS }} "
+          fi
+          
+          OUTPUT_DIR=out
+
+          # Start to execute build kernel
+          make O=$OUTPUT_DIR ${{ env.DEFCONFIG_NAME }} ${CMDS_EXTRA}
+          echo "START_BUILD=$(date +%s)" >> $GITHUB_ENV
+
+          if [ "${{ env.BUILD_DEBUGGER }}" == "true" ] && [ "${{ env.SKIP_PATCH }}" == "false" ]; then
+            # Build zImage with error checker
+            if [ "${{ env.CC }}" == "clang" ]; then
+              make -j$(nproc --all) O=$OUTPUT_DIR ${USE_GCC} ${CMDS_EXTRA} CC=${{ env.CC }} 2>&1 | tee build.log
+              if [ ${PIPESTATUS[0]} -ne 0 ]; then
+                RETVAL=${PIPESTATUS[0]}
+                echo "Build failed with exit code $RETVAL"
+                /tmp/Patches/check_error.sh build.log
+                exit $RETVAL
+              fi
+            else
+              make -j$(nproc --all) O=$OUTPUT_DIR ${USE_GCC} ${CMDS_EXTRA} 2>&1 | tee build.log
+              if [ ${PIPESTATUS[0]} -ne 0 ]; then
+                RETVAL=${PIPESTATUS[0]}
+                echo "Build failed with exit code $RETVAL"
+                /tmp/Patches/check_error.sh build.log
+                exit $RETVAL
+              fi
+            fi
+          else
+            # Build zImage without error checker
+            if [ "${{ env.CC }}" == "clang" ]; then
+              make -j$(nproc --all) O=$OUTPUT_DIR ${USE_GCC} ${CMDS_EXTRA} CC=${{ env.CC }}
+            else
+              make -j$(nproc --all) O=$OUTPUT_DIR ${USE_GCC} ${CMDS_EXTRA}
+            fi
+          fi
+          
+          echo "END_BUILD=$(date +%s)" >> $GITHUB_ENV
+          
+          # Check built file
+          ls -la $OUTPUT_DIR/arch/arm64/boot/
+          if [ -f "$OUTPUT_DIR/arch/arm64/boot/Image.gz" ]; then
+            echo "BUILD_SUCCESS=true" >> $GITHUB_ENV
+          else
+            echo "BUILD_SUCCESS=false" >> $GITHUB_ENV
+          fi
+
+          if [ "${{ env.GENERATE_DTB }}" == "true" ]; then
+            # Generate DTB and DTBO
+            if [ -f "${OUTPUT_DIR}/arch/arm64/boot/dts/${{ env.GENERATE_CHIP }}/Makefile" ]; then
+              echo "DTB is OK!"
+              if [ "${{ env.CC }}" == "clang" ]; then
+                make -j$(nproc --all) O=$OUTPUT_DIR ${USE_GCC} ${CMDS_EXTRA} CC=${{ env.CC }} dtbs
+              else
+                make -j$(nproc --all) O=$OUTPUT_DIR ${USE_GCC} ${CMDS_EXTRA} dtbs
+              fi
+              ls -la $OUTPUT_DIR/arch/arm64/boot/dts/
+              find $OUTPUT_DIR/arch/arm64/boot/dts/${{ env.GENERATE_CHIP }} -name "*.dtb" -type f -exec cat {} \; > $OUTPUT_DIR/arch/arm64/boot/dtb
+            else
+              echo "DTB is not exist!"
+            fi
+          fi
+
+      - name: Build Anykernel3 Package
+        id: build_anykernel
+        if: env.BUILD_SUCCESS == 'true' && env.PACK_METHOD == 'Anykernel3' && !cancelled()
+        run: |
+          cd $GITHUB_WORKSPACE
+          
+          if [ -d "android-kernel/anykernel3" ]; then
+            cp android-kernel/out/arch/arm64/boot/Image.gz android-kernel/anykernel3/
+            cd android-kernel/anykernel3
+          elif [ -d "android-kernel/AnyKernel3" ]; then
+            cp android-kernel/out/arch/arm64/boot/Image.gz android-kernel/AnyKernel3/
+            cd android-kernel/AnyKernel3
+          else
+            # Copy Anykernel3
+            cp android-kernel/out/arch/arm64/boot/Image.gz AnyKernel3/
+            cd AnyKernel3
+          fi
+          
+          # Generate dtb
+          if [ "${{ env.GENERATE_DTB }}" == "true" ] && [ -f "$GITHUB_WORKSPACE/android-kernel/out/arch/arm64/boot/dtb" ]; then
+            cp $GITHUB_WORKSPACE/android-kernel/out/arch/arm64/boot/dtb .
+          fi
+          
+          # Copt dtbo
+          if [ -f "$GITHUB_WORKSPACE/android-kernel/out/arch/arm64/boot/dtbo.img" ]; then
+            cp $GITHUB_WORKSPACE/android-kernel/out/arch/arm64/boot/dtbo.img .
+          fi
+
+          # Zip package
+          zip -r9 "../${{ env.DEVICE_CODENAME }}_${{ env.ROM_TEXT }}_SukiSU-SUSFS-${{ github.event.inputs.SUSFS_VERSION }}.zip" * -x .git README.md *placeholder
+
+      - name: Check Build Cost
+        run: |
+          if [ -n "${{ env.START_BUILD }}" ] && [ -n "${{ env.END_BUILD }}" ]; then
+            BUILD_TIME=$(( ${{ env.END_BUILD }} - ${{ env.START_BUILD }} ))
+            echo "Building kernel took ${BUILD_TIME} seconds."
+          else
+            echo "Time variables not set, can't calculate build time."
+          fi
+
+      - name: Upload Kernel Package
+        if: env.BUILD_SUCCESS == 'true' && !cancelled()
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ env.DEVICE_CODENAME }}_${{ env.ROM_TEXT }}_SukiSU-SUSFS-${{ github.event.inputs.SUSFS_VERSION }}
+          path: |
+            android-kernel/*.zip
+            android-kernel/out/arch/arm64/boot/Image.gz
+            android-kernel/out/arch/arm64/boot/dtbo.img
+            android-kernel/out/arch/arm64/boot/dtb 
