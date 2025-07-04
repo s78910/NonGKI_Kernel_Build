@@ -39,7 +39,7 @@ env:
   CUSTOM_CMDS: CLANG_TRIPLE=aarch64-linux-gnu-
   EXTRA_CMDS: LD=ld.lld LLVM=1
   KERNEL_SOURCE: https://github.com/OnePlusOSS/android_kernel_oneplus_sm8250.git
-  KERNEL_BRANCH: oneplus/sm8250_s_13.1
+  KERNEL_BRANCH: oneplus/sm8250_t_12.1
   CLANG_SOURCE: https://gitlab.com/Panchajanya1999/azure-clang.git
   CLANG_BRANCH: main
   GCC_GNU: 
@@ -64,7 +64,7 @@ env:
   LXC_ENABLE: 
   HAVE_NO_DTBO: 
   HAVE_NO_DTBO_TOOL: 
-  ROM_TEXT: official_ROM_a13 
+  ROM_TEXT: official_ROM_a12 
   CC: clang
   PATH: /home/runner/work/NonGKI_Kernel_Build/NonGKI_Kernel_Build/clang/bin:/snap/bin:/home/runner/.local/bin:/opt/pipx_bin:/home/runner/.cargo/bin:/home/runner/.config/composer/vendor/bin:/usr/local/.ghcup/bin:/home/runner/.dotnet/tools:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin
 
