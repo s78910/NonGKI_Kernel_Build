@@ -158,6 +158,12 @@ Github放弃了Ubuntu 20.04，若你有需求，或者使用Clang Proton，请�
   
 - **syscall_hook_patches_older.sh**
   - 变量：HOOK_METHOD -> syscall 和 HOOK_OLDER -> true
+  - 用于执行backslashxx大佬最新实现的最小化手动修补(Syscall)功能，对旧版本编译器兼容性不是很好，但适配支持了内核版本≤3.18（ARMV7A）设备，会自动执行对缺少SELinux相关权限的旧版本内核（内核版本≤4.9），因此全内核可用
+    - 版本：1.4
+  - 参考：https://github.com/backslashxx/KernelSU/issues/5
+  
+- **syscall_hook_patches_early.sh**
+  - 暂无执行方式
   - syscall的最初版本，适用于需要syscall但执行最新版失败的情况
   - 参考：https://github.com/backslashxx/KernelSU/issues/5
   
@@ -166,8 +172,8 @@ Github放弃了Ubuntu 20.04，若你有需求，或者使用Clang Proton，请�
   - 用于执行对Non-GKI内核的反向移植，除了KernelSU-Next和SukiSU-Ultra可以实现自动反向移植外，其他的分支均无法实现
   - 参考：https://github.com/backslashxx/KernelSU/issues/4#issue-2818274642
   
-- **backport_patches_older.sh** 
-  - 变量：HOOK_OLDER -> true
+- **backport_patches_early.sh** 
+  - 自动执行
   - 旧版向后移植方案，用于normal patch和syscall旧版
   - 参考：https://github.com/backslashxx/KernelSU/issues/4#issue-2818274642
 
@@ -184,8 +190,38 @@ Github放弃了Ubuntu 20.04，若你有需求，或者使用Clang Proton，请�
 - **Patch/susfs_upgrade_to_157.patch**
   - 变量：(env文件)SUSFS_UPDATE -> true
   - 对停止更新的Non-GKI设备的SuSFS进行更新，从v1.5.5更新至v1.5.7
-  - 参考：https://github.com/rsuntk/android_kernel_asus_sdm660-4.19/pull/1
+  - 参考：https://github.com/rsuntk/android_kernel_asus_sdm660-4.19/commit/b3c85f330b135baf5c101b07f027e69e75f42060
+  
+- **Patch/susfs_upgrade_to_158_X_X.patch**
+  - 变量：(env文件)SUSFS_UPDATE -> true
+  - 对停止更新的Non-GKI设备的SuSFS进行更新，从v1.5.7更新至v1.5.8
+  - 参考：
+    - https://github.com/rsuntk/android_kernel_asus_sdm660-4.19/commit/41678dd9290f04d98b9f0523574e11f98c7ce7c1
+    - https://github.com/rsuntk/android_kernel_asus_sdm660-4.19/commit/60008290523a235282176b328f390777282024c9
+    - https://github.com/rsuntk/android_kernel_asus_sdm660-4.19/commit/999ae11965ac2b4f3d3c7fbebc8e09cc8bbd0fce
+    
+- **Patch/susfs_upgrade_to_159.patch**
+  - 变量：(env文件)SUSFS_UPDATE -> true
+  - 对停止更新的Non-GKI设备的SuSFS进行更新，从v1.5.8更新至v1.5.9
+  - 参考：
+    - https://gitlab.com/simonpunk/susfs4ksu/-/commit/fc90c9428b56133a99c39f0915472c0fc25979fe
+    - https://gitlab.com/simonpunk/susfs4ksu/-/commit/b9dca0f7498413f5f6e19e74b530a64d628ae315
+    - https://gitlab.com/simonpunk/susfs4ksu/-/commit/10f3cbdc26cad49094572e23bb62857e056a805c
+    - https://gitlab.com/simonpunk/susfs4ksu/-/commit/072a1b42bf323439c71c045a389f362f39caffe0
+    - https://gitlab.com/simonpunk/susfs4ksu/-/commit/a26ba8380e1d10b2169b8148967c4f5108c2a3f7
 
+- **Patch/susfs_upgrade_to_1510_X_X.patch**
+  - 变量：(env文件)SUSFS_UPDATE -> true
+  - 对停止更新的Non-GKI设备的SuSFS进行更新，从v1.5.9更新至v1.5.10
+  - 参考：
+    - https://gitlab.com/simonpunk/susfs4ksu/-/commit/756e48167a71cdc757d7c3e5a1d4fc329714dc37
+    - https://gitlab.com/simonpunk/susfs4ksu/-/commit/7fce87f6d0a4dbc67aeb4e01e37a00eecb940bdf
+    - https://gitlab.com/simonpunk/susfs4ksu/-/commit/650d9c1ba08c17bc0bb86ed19d8c8ae319f400ad
+    - https://gitlab.com/simonpunk/susfs4ksu/-/commit/900b35c223529337681d8a36b9123858fd0da345
+    - https://gitlab.com/simonpunk/susfs4ksu/-/commit/0e5081e1a2fc93d0ba1e87091ecdca006e3cd639
+    - https://gitlab.com/simonpunk/susfs4ksu/-/commit/a92aa588cb1e2163e0d9fe7dd969d012f51654b2
+    - https://gitlab.com/simonpunk/susfs4ksu/-/commit/e418485fc2694900b5cc8fa44cd98d194fb6ffa7
+    
 - **Patch/set_memory_to_49_and_low.patch**
   - 变量：KPM_ENABLE -> true
   - 用于对内核版本≤4.9的设备移植set_memory功能的补丁文件，因为缺少大量测试，因此只作为测试补丁，且该补丁仅用于需要使用SukiSU-Ultra的KPM功能的情况下
@@ -198,12 +234,17 @@ Github放弃了Ubuntu 20.04，若你有需求，或者使用Clang Proton，请�
   
 - **Patch/fix_kpm.patch**
   - 变量：KPM_FIX -> true
-  - 用于应对**“栈帧”溢出漏洞**导致的编译失败问题
+  - 用于应对**栈帧溢出漏洞**导致的编译失败问题
   - 参考：https://github.com/SukiSU-Ultra/SukiSU-Ultra/issues/141
   
 - **Rekernel/rekernel-X.X.patch**
   - 变量：REKERNEL_ENABLE -> true
   - 让内核支持Re:Kernel的补丁文件，YAML会根据你的内核版本自动判断使用的补丁，不过若你是4.9内核且当前补丁不可用，就需要将补丁修改成rekernel-4.9-for-fixed.patch后尝试，不支持内核版本≤4.4设备
   - 参考：https://github.com/Sakion-Team/Re-Kernel/blob/main/Integrate/README_CN.md
+  
+- **Bin/curlx.sh**
+  - 自动执行
+  - 用于更加便捷的执行包括断点续传在内的curl命令
+  - 参考：由[@yu13140](https://github.com/yu13140)提供更新
   
 最后提醒⚠️：非上述提示的步骤理论上不需要你做任何修改，我已经尽可能实现多情况判定
